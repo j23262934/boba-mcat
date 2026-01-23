@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>飲-每日手搖飲紀錄</title>
+    <title>每日手搖飲紀錄</title>
     <!-- 引入 Chart.js 用於圖表 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- 引入 FontAwesome 用於圖示 -->
@@ -31,7 +31,6 @@
             font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
             margin: 0;
             padding: 0;
-            /* 防止手機點擊高亮藍色框 */
             -webkit-tap-highlight-color: transparent;
         }
 
@@ -47,7 +46,6 @@
             margin: 0 auto;
         }
 
-        /* 標題與分頁 */
         header {
             text-align: center;
             margin-bottom: 20px;
@@ -109,11 +107,10 @@
             background: var(--modal-mask);
             z-index: 1000;
             justify-content: center;
-            align-items: flex-start; /* 手機端建議靠上對齊，避免鍵盤彈出遮擋 */
-            padding-top: 10vh;
+            align-items: flex-start;
+            padding-top: 8vh;
             opacity: 0;
             transition: opacity 0.3s;
-            /* 讓 overlay 可以捲動，防止內容太長 */
             overflow-y: auto;
         }
 
@@ -132,7 +129,7 @@
             transform: translateY(20px);
             transition: transform 0.3s;
             position: relative;
-            margin-bottom: 50px; /* 底部緩衝 */
+            margin-bottom: 50px;
         }
 
         .modal-overlay.open .modal-card {
@@ -156,7 +153,6 @@
             font-size: 1.5rem;
             cursor: pointer;
             color: var(--text-light);
-            padding: 0 5px;
         }
 
         .form-group { margin-bottom: 12px; }
@@ -174,13 +170,12 @@
             padding: 10px;
             border: 1px solid var(--border);
             border-radius: 8px;
-            font-size: 16px; /* 修正關鍵：手機端必須設為 16px 以防止 iOS 自動縮放造成閃退 */
+            font-size: 16px; /* 防止 iOS 縮放閃退 */
             color: var(--text-main);
             background-color: #FAFAFA;
-            -webkit-appearance: none; /* 讓 iOS 樣式更統一 */
+            -webkit-appearance: none;
         }
         
-        /* 讓 select 在 iOS 上有下拉箭頭感 */
         select {
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238C8C8C' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
@@ -188,15 +183,9 @@
             padding-right: 30px;
         }
 
-        input:focus, select:focus {
-            outline: none;
-            border-color: var(--primary);
-            background-color: #fff;
-        }
-
         .row-grid { 
             display: grid; 
-            grid-template-columns: 2fr 1fr; 
+            grid-template-columns: 2.2fr 1fr; /* 商店長、金額短 */
             gap: 10px; 
         }
         .row-grid.equal { 
@@ -216,9 +205,6 @@
             font-weight: 600;
         }
 
-        button.submit-btn:hover { background-color: var(--primary-dark); }
-
-        /* FAB */
         .fab-btn {
             position: fixed;
             bottom: 30px;
@@ -238,7 +224,7 @@
             justify-content: center;
         }
 
-        /* 列表與統計樣式 (保持原樣) */
+        /* 列表樣式 */
         .month-header { font-size: 0.9rem; color: var(--text-light); margin: 25px 0 10px 5px; font-weight: bold; display: flex; align-items: center; }
         .month-header::after { content: ''; flex: 1; height: 1px; background: var(--border); margin-left: 10px; }
         .record-item { background: var(--card-bg); padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); border-left: 4px solid var(--accent); display: flex; align-items: center; gap: 15px; }
@@ -261,10 +247,6 @@
         .stat-box h4 { font-size: 0.8rem; color: var(--text-light); margin-bottom: 5px; }
         .stat-box .number { font-size: 1.3rem; color: var(--primary); font-weight: bold; }
         .chart-container { position: relative; height: 250px; }
-
-        @media (max-width: 600px) {
-            .row-grid, .row-grid.equal { grid-template-columns: 1fr 1fr !important; } /* 強制在手機上也保持並列 */
-        }
     </style>
 </head>
 <body>
@@ -297,8 +279,8 @@
     <i class="fa-solid fa-plus"></i>
 </button>
 
+<!-- 彈出視窗 -->
 <div class="modal-overlay" id="recordModal">
-    <!-- 修正關鍵：在 modal-card 加入 onclick 阻止事件冒泡到背景 -->
     <div class="modal-card" onclick="event.stopPropagation()">
         <div class="modal-header">
             <h3 id="modal-title">記一杯</h3>
@@ -313,16 +295,18 @@
                 <input type="date" id="date">
             </div>
 
+            <!-- 飲料名稱改為長欄位 -->
             <div class="form-group">
-                <label for="shop">商店名稱</label>
-                <input type="text" id="shop" list="shop-list" placeholder="輸入或選擇商店...">
-                <datalist id="shop-list"></datalist>
+                <label for="drink">飲料名稱</label>
+                <input type="text" id="drink" placeholder="例如：珍珠鮮奶茶">
             </div>
 
+            <!-- 商店名稱與金額並列 -->
             <div class="row-grid">
                 <div class="form-group">
-                    <label for="drink">飲料名稱</label>
-                    <input type="text" id="drink" placeholder="珍珠奶茶">
+                    <label for="shop">商店名稱</label>
+                    <input type="text" id="shop" list="shop-list" placeholder="商店名稱">
+                    <datalist id="shop-list"></datalist>
                 </div>
                 <div class="form-group">
                     <label for="price">金額</label>
@@ -394,7 +378,6 @@
             }
         }
         modal.classList.add('open');
-        // 針對手機端：打開 Modal 時鎖定背景捲動
         document.body.style.overflow = 'hidden';
     }
 
@@ -403,7 +386,6 @@
         document.body.style.overflow = '';
     }
     
-    // 修正：更嚴謹的背景點擊判定
     document.getElementById('recordModal').addEventListener('click', function(e) {
         if (e.target === this) closeModal();
     });
