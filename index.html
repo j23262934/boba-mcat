@@ -96,6 +96,20 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* 篩選器樣式 */
+        .filter-card {
+            background: var(--card-bg);
+            padding: 12px 20px;
+            border-radius: var(--radius);
+            margin-bottom: 15px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .filter-card label { margin-bottom: 0; font-size: 0.9rem; margin-right: 10px; }
+        .filter-card select { width: auto; padding: 5px 30px 5px 15px; font-size: 0.9rem; }
+
         /* Modal 樣式 */
         .modal-overlay {
             display: none;
@@ -224,14 +238,8 @@
             color: var(--primary);
         }
 
-        /* 收合狀態邏輯 */
-        .month-group.collapsed .month-body {
-            display: none;
-        }
-
-        .month-group.collapsed .month-header i {
-            transform: rotate(-90deg);
-        }
+        .month-group.collapsed .month-body { display: none; }
+        .month-group.collapsed .month-header i { transform: rotate(-90deg); }
 
         /* 紀錄項目樣式 */
         .record-item {
@@ -280,11 +288,11 @@
 
         /* 統計卡片樣式 */
         .card { background: var(--card-bg); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 20px; }
-        .stats-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; text-align: center; }
+        .stats-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; text-align: center; }
         .stat-box { background: white; padding: 15px 5px; border-radius: var(--radius); box-shadow: var(--shadow); }
         .stat-box h4 { font-size: 0.8rem; color: var(--text-light); margin-bottom: 5px; }
         .stat-box .number { font-size: 1.3rem; color: var(--primary); font-weight: bold; }
-        .chart-container { position: relative; height: 250px; }
+        .chart-container { position: relative; height: 280px; }
     </style>
 </head>
 <body>
@@ -293,8 +301,8 @@
     <header>
         <h1>Daily Boba Tracker</h1>
         <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('record')">紀錄列表</button>
-            <button class="tab-btn" onclick="switchTab('analysis')">統計圖表</button>
+            <button class="tab-btn active" id="tab-btn-record" onclick="switchTab('record')">紀錄列表</button>
+            <button class="tab-btn" id="tab-btn-analysis" onclick="switchTab('analysis')">統計圖表</button>
         </div>
     </header>
 
@@ -303,13 +311,28 @@
     </div>
 
     <div id="tab-analysis" class="content-section">
+        <!-- 新增月份篩選器 -->
+        <div class="filter-card">
+            <label for="month-filter"><i class="fa-solid fa-calendar-days"></i> 統計區間</label>
+            <select id="month-filter" onchange="updateCharts()">
+                <option value="all">全部時間</option>
+            </select>
+        </div>
+
         <div class="stats-summary">
             <div class="stat-box"><h4>總杯數</h4><div class="number" id="total-cups">0</div></div>
             <div class="stat-box"><h4>總花費</h4><div class="number" id="total-spend">$0</div></div>
         </div>
-        <div class="card"><h3>店家消費排行</h3><div class="chart-container"><canvas id="shopChart"></canvas></div></div>
-        <div class="card"><h3>每月杯數比例</h3><div class="chart-container"><canvas id="monthlyChart"></canvas></div></div>
-        <div class="card"><h3>飲品溫度統計</h3><div class="chart-container"><canvas id="tempChart"></canvas></div></div>
+        
+        <div class="card">
+            <h3 id="shop-chart-title">店家消費排行</h3>
+            <div class="chart-container"><canvas id="shopChart"></canvas></div>
+        </div>
+        
+        <div class="card">
+            <h3>飲品溫度比例</h3>
+            <div class="chart-container"><canvas id="tempChart"></canvas></div>
+        </div>
     </div>
 </div>
 
@@ -375,7 +398,7 @@
 <script>
     let records = JSON.parse(localStorage.getItem('bobaRecords')) || [];
     let savedShops = JSON.parse(localStorage.getItem('bobaShops')) || [];
-    let shopChartInstance, monthlyChartInstance, tempChartInstance;
+    let shopChartInstance, tempChartInstance;
 
     window.onload = function() {
         renderShopDatalist();
@@ -383,8 +406,7 @@
     };
 
     function toggleMonth(el) {
-        const group = el.parentElement;
-        group.classList.toggle('collapsed');
+        el.parentElement.classList.toggle('collapsed');
     }
 
     function openModal(mode, id = null) {
@@ -396,8 +418,6 @@
             document.getElementById('shop').value = '';
             document.getElementById('drink').value = '';
             document.getElementById('price').value = '';
-            document.getElementById('ice').value = '微冰';
-            document.getElementById('sugar').value = '微糖';
         } else {
             document.getElementById('modal-title').innerText = '編輯紀錄';
             const record = records.find(r => r.id === id);
@@ -412,17 +432,11 @@
             }
         }
         modal.classList.add('open');
-        document.body.style.overflow = 'hidden';
     }
 
     function closeModal() {
         document.getElementById('recordModal').classList.remove('open');
-        document.body.style.overflow = '';
     }
-    
-    document.getElementById('recordModal').addEventListener('click', function(e) {
-        if (e.target === this) closeModal();
-    });
 
     function saveRecord() {
         const id = document.getElementById('edit-id').value;
@@ -474,37 +488,23 @@
         }
 
         records.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-        let currentMonthGroupKey = '';
-        let currentMonthBody = null;
+        let currentMonthKey = '';
+        let currentBody = null;
 
         records.forEach(record => {
-            const dateObj = new Date(record.date);
-            const monthKey = record.date.substring(0, 7); 
-
-            if (monthKey !== currentMonthGroupKey) {
-                currentMonthGroupKey = monthKey;
-                
-                // 建立月份區塊容器
-                const groupDiv = document.createElement('div');
-                groupDiv.className = 'month-group';
-                
-                // 建立標題
-                const header = document.createElement('div');
-                header.className = 'month-header';
-                header.innerHTML = `<span>${dateObj.getFullYear()}年 ${dateObj.getMonth() + 1}月</span><i class="fa-solid fa-chevron-down"></i>`;
-                header.onclick = function() { toggleMonth(this); };
-                
-                // 建立內容容器
-                const body = document.createElement('div');
-                body.className = 'month-body';
-                currentMonthBody = body;
-
-                groupDiv.appendChild(header);
-                groupDiv.appendChild(body);
-                container.appendChild(groupDiv);
+            const monthKey = record.date.substring(0, 7);
+            if (monthKey !== currentMonthKey) {
+                currentMonthKey = monthKey;
+                const group = document.createElement('div');
+                group.className = 'month-group';
+                group.innerHTML = `<div class="month-header" onclick="toggleMonth(this)"><span>${monthKey.replace('-','年 ')}月</span><i class="fa-solid fa-chevron-down"></i></div>`;
+                currentBody = document.createElement('div');
+                currentBody.className = 'month-body';
+                group.appendChild(currentBody);
+                container.appendChild(group);
             }
 
+            const dateObj = new Date(record.date);
             const item = document.createElement('div');
             item.className = 'record-item';
             item.innerHTML = `
@@ -526,7 +526,7 @@
                         </div>
                     </div>
                 </div>`;
-            currentMonthBody.appendChild(item);
+            currentBody.appendChild(item);
         });
     }
 
@@ -534,56 +534,90 @@
         const datalist = document.getElementById('shop-list');
         datalist.innerHTML = '';
         savedShops.forEach(shop => {
-            const option = document.createElement('option');
-            option.value = shop;
-            datalist.appendChild(option);
+            const opt = document.createElement('option');
+            opt.value = shop;
+            datalist.appendChild(opt);
         });
+    }
+
+    // 產生月份篩選選單
+    function updateMonthFilterOptions() {
+        const filter = document.getElementById('month-filter');
+        const currentVal = filter.value;
+        const months = [...new Set(records.map(r => r.date.substring(0, 7)))].sort().reverse();
+        
+        filter.innerHTML = '<option value="all">全部時間</option>';
+        months.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.innerText = m.replace('-',' / ');
+            filter.appendChild(opt);
+        });
+        filter.value = months.includes(currentVal) ? currentVal : 'all';
     }
 
     function switchTab(tabName) {
         document.querySelectorAll('.content-section, .tab-btn').forEach(el => el.classList.remove('active'));
         document.getElementById(`tab-${tabName}`).classList.add('active');
-        event.target.classList.add('active');
+        document.getElementById(`tab-btn-${tabName}`).classList.add('active');
         document.querySelector('.fab-btn').style.display = tabName === 'analysis' ? 'none' : 'flex';
-        if(tabName === 'analysis') updateCharts();
+        
+        if(tabName === 'analysis') {
+            updateMonthFilterOptions();
+            updateCharts();
+        }
     }
 
-    const morandiPalette = ['#7da1b8', '#BFACAA', '#8FA895', '#D69F9F', '#E6C9A8', '#9EB1BC'];
+    const morandiPalette = ['#7da1b8', '#BFACAA', '#8FA895', '#D69F9F', '#E6C9A8', '#9EB1BC', '#A2AD91', '#B8B8D1'];
 
     function updateCharts() {
+        const selectedMonth = document.getElementById('month-filter').value;
+        const filteredRecords = selectedMonth === 'all' 
+            ? records 
+            : records.filter(r => r.date.startsWith(selectedMonth));
+
         let totalSpend = 0;
-        const shopCounts = {}, monthlyCounts = {}, tempCounts = { '正常冰':0, '少冰':0, '微冰':0, '去冰':0, '溫':0, '熱':0 };
-        records.forEach(r => {
+        const shopCounts = {}, tempCounts = { '正常冰':0, '少冰':0, '微冰':0, '去冰':0, '溫':0, '熱':0 };
+
+        filteredRecords.forEach(r => {
             totalSpend += (r.price || 0);
             shopCounts[r.shop] = (shopCounts[r.shop] || 0) + 1;
-            monthlyCounts[r.date.substring(0, 7)] = (monthlyCounts[r.date.substring(0, 7)] || 0) + 1;
             if (tempCounts.hasOwnProperty(r.ice)) tempCounts[r.ice]++;
         });
-        document.getElementById('total-cups').innerText = records.length;
-        document.getElementById('total-spend').innerText = `$${totalSpend.toLocaleString()}`;
 
-        const sortedShops = Object.entries(shopCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        document.getElementById('total-cups').innerText = filteredRecords.length;
+        document.getElementById('total-spend').innerText = `$${totalSpend.toLocaleString()}`;
+        document.getElementById('shop-chart-title').innerText = selectedMonth === 'all' ? '店家消費排行' : `${selectedMonth.replace('-',' / ')} 店家排行`;
+
+        // 店家排行圖表
+        const sortedShops = Object.entries(shopCounts).sort((a, b) => b[1] - a[1]);
         if (shopChartInstance) shopChartInstance.destroy();
         shopChartInstance = new Chart(document.getElementById('shopChart'), {
             type: 'bar',
-            data: { labels: sortedShops.map(i => i[0]), datasets: [{ label: '杯數', data: sortedShops.map(i => i[1]), backgroundColor: morandiPalette, borderRadius: 4 }] },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            data: { 
+                labels: sortedShops.map(i => i[0]), 
+                datasets: [{ 
+                    label: '杯數', 
+                    data: sortedShops.map(i => i[1]), 
+                    backgroundColor: morandiPalette,
+                    borderRadius: 4 
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                indexAxis: sortedShops.length > 6 ? 'y' : 'x',
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { ticks: { stepSize: 1 } } } 
+            }
         });
 
-        const sortedMonths = Object.keys(monthlyCounts).sort();
-        if (monthlyChartInstance) monthlyChartInstance.destroy();
-        monthlyChartInstance = new Chart(document.getElementById('monthlyChart'), {
-            type: 'pie',
-            data: { labels: sortedMonths, datasets: [{ data: sortedMonths.map(m => monthlyCounts[m]), backgroundColor: morandiPalette }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
-        });
-
+        // 溫度統計圖表
         const tempL = [], tempD = [];
         for (const [k, v] of Object.entries(tempCounts)) { if (v > 0) { tempL.push(k); tempD.push(v); } }
         if (tempChartInstance) tempChartInstance.destroy();
         tempChartInstance = new Chart(document.getElementById('tempChart'), {
             type: 'doughnut',
-            data: { labels: tempL, datasets: [{ data: tempD, backgroundColor: ['#7C909C','#9EB1BC','#C4D4DC','#E0E0E0','#E6C9A8','#D69F9F'] }] },
+            data: { labels: tempL, datasets: [{ data: tempD, backgroundColor: morandiPalette }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
         });
     }
