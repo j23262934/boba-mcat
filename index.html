@@ -207,40 +207,6 @@
             font-weight: 600;
         }
 
-        /* 月份分類收合樣式 */
-        .month-group {
-            margin-bottom: 15px;
-        }
-
-        .month-header {
-            font-size: 0.95rem;
-            color: var(--text-light);
-            margin: 20px 0 10px 0;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-            padding: 5px;
-            user-select: none;
-        }
-
-        .month-header::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: var(--border);
-            margin: 0 15px;
-        }
-
-        .month-header i {
-            font-size: 0.8rem;
-            transition: transform 0.3s ease;
-            color: var(--primary);
-        }
-
-        .month-group.collapsed .month-body { display: none; }
-        .month-group.collapsed .month-header i { transform: rotate(-90deg); }
-
         /* 紀錄項目樣式 */
         .record-item {
             background: var(--card-bg);
@@ -292,7 +258,8 @@
         .stat-box { background: white; padding: 15px 5px; border-radius: var(--radius); box-shadow: var(--shadow); }
         .stat-box h4 { font-size: 0.8rem; color: var(--text-light); margin-bottom: 5px; }
         .stat-box .number { font-size: 1.3rem; color: var(--primary); font-weight: bold; }
-        .chart-container { position: relative; height: 280px; }
+        .chart-container { position: relative; height: 320px; }
+        .chart-container.short { height: 240px; }
 
         /* 同步功能樣式 */
         .sync-section {
@@ -320,8 +287,14 @@
             gap: 8px;
             transition: all 0.2s;
         }
-        .sync-btn:active { background: #f0f5f8; transform: scale(0.98); }
         .sync-btn.import { border-color: var(--accent); color: var(--accent); }
+
+        /* 月份分組樣式 */
+        .month-header { font-size: 0.95rem; color: var(--text-light); margin: 20px 0 10px 0; font-weight: bold; display: flex; align-items: center; cursor: pointer; padding: 5px; user-select: none; }
+        .month-header::after { content: ''; flex: 1; height: 1px; background: var(--border); margin: 0 15px; }
+        .month-header i { font-size: 0.8rem; transition: transform 0.3s ease; color: var(--primary); }
+        .month-group.collapsed .month-body { display: none; }
+        .month-group.collapsed .month-header i { transform: rotate(-90deg); }
     </style>
 </head>
 <body>
@@ -340,7 +313,6 @@
     </div>
 
     <div id="tab-analysis" class="content-section">
-        <!-- 新增月份篩選器 -->
         <div class="filter-card">
             <label for="month-filter"><i class="fa-solid fa-calendar-days"></i> 統計區間</label>
             <select id="month-filter" onchange="updateCharts()">
@@ -354,8 +326,13 @@
         </div>
         
         <div class="card">
-            <h3 id="shop-chart-title">店家消費排行</h3>
+            <h3 id="shop-chart-title">店家消費排行 (Top 10)</h3>
             <div class="chart-container"><canvas id="shopChart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <h3 id="drink-chart-title">品項消費排行 (Top 5)</h3>
+            <div class="chart-container short"><canvas id="drinkChart"></canvas></div>
         </div>
         
         <div class="card">
@@ -363,7 +340,7 @@
             <div class="chart-container"><canvas id="tempChart"></canvas></div>
         </div>
 
-        <!-- 同步功能區塊 -->
+        <!-- 同步備份 -->
         <div class="sync-section">
             <div class="sync-title">資料備份與同步</div>
             <div class="sync-btn-group">
@@ -383,6 +360,7 @@
     <i class="fa-solid fa-plus"></i>
 </button>
 
+<!-- Modal -->
 <div class="modal-overlay" id="recordModal">
     <div class="modal-card" onclick="event.stopPropagation()">
         <div class="modal-header">
@@ -397,7 +375,8 @@
             </div>
             <div class="form-group">
                 <label for="drink">飲料名稱</label>
-                <input type="text" id="drink" placeholder="例如：珍珠鮮奶茶">
+                <input type="text" id="drink" list="drink-list" placeholder="例如：珍珠鮮奶茶">
+                <datalist id="drink-list"></datalist>
             </div>
             <div class="row-grid">
                 <div class="form-group">
@@ -418,6 +397,7 @@
                         <option value="少冰">少冰</option>
                         <option value="微冰" selected>微冰</option>
                         <option value="去冰">去冰</option>
+                        <option value="常溫">常溫</option>
                         <option value="溫">溫</option>
                         <option value="熱">熱</option>
                     </select>
@@ -441,16 +421,30 @@
 <script>
     let records = JSON.parse(localStorage.getItem('bobaRecords')) || [];
     let savedShops = JSON.parse(localStorage.getItem('bobaShops')) || [];
-    let shopChartInstance, tempChartInstance;
+    let savedDrinks = JSON.parse(localStorage.getItem('bobaDrinks')) || [];
+    let shopChartInstance, drinkChartInstance, tempChartInstance;
+
+    // 溫度地圖顏色
+    const tempColorMap = {
+        '正常冰': '#B7B7B7', // 灰
+        '少冰': '#acc6d6',   // 淺藍
+        '微冰': '#8eb1c7',   // 極淺藍
+        '去冰': '#6b9ab8',   // 藕粉
+        '常溫': '#A3C6AB',   // 霧霾藍
+        '溫': '#E6C9A8',     // 奶茶色
+        '熱': '#D69F9F'      // 磚粉色
+    };
+
+    // 調色盤
+    const morandiPalette = ['#7da1b8', '#BFACAA', '#8FA895', '#D69F9F', '#E6C9A8', '#9EB1BC', '#A2AD91', '#B8B8D1', '#C2A58F', '#90A4AE'];
 
     window.onload = function() {
         renderShopDatalist();
+        renderDrinkDatalist();
         renderRecords();
     };
 
-    function toggleMonth(el) {
-        el.parentElement.classList.toggle('collapsed');
-    }
+    function toggleMonth(el) { el.parentElement.classList.toggle('collapsed'); }
 
     function openModal(mode, id = null) {
         const modal = document.getElementById('recordModal');
@@ -477,9 +471,7 @@
         modal.classList.add('open');
     }
 
-    function closeModal() {
-        document.getElementById('recordModal').classList.remove('open');
-    }
+    function closeModal() { document.getElementById('recordModal').classList.remove('open'); }
 
     function saveRecord() {
         const id = document.getElementById('edit-id').value;
@@ -492,7 +484,7 @@
 
         const recordData = {
             id: id ? parseInt(id) : Date.now(),
-            date, shop, drink, price: price ? parseInt(price) : 0,
+            date, shop, drink, price: price === "" ? 0 : parseInt(price),
             ice: document.getElementById('ice').value,
             sugar: document.getElementById('sugar').value
         };
@@ -502,11 +494,18 @@
             if (index !== -1) records[index] = recordData;
         } else {
             records.push(recordData);
-            if (!savedShops.includes(shop)) {
-                savedShops.push(shop);
-                localStorage.setItem('bobaShops', JSON.stringify(savedShops));
-                renderShopDatalist();
-            }
+        }
+
+        // 記憶功能
+        if (shop && !savedShops.includes(shop)) {
+            savedShops.push(shop);
+            localStorage.setItem('bobaShops', JSON.stringify(savedShops));
+            renderShopDatalist();
+        }
+        if (drink && !savedDrinks.includes(drink)) {
+            savedDrinks.push(drink);
+            localStorage.setItem('bobaDrinks', JSON.stringify(savedDrinks));
+            renderDrinkDatalist();
         }
 
         localStorage.setItem('bobaRecords', JSON.stringify(records));
@@ -529,11 +528,9 @@
             container.innerHTML = '<p style="text-align:center; color:#8C8C8C; margin-top:50px;">點擊右下角 ＋ 開始記錄！</p>';
             return;
         }
-
         records.sort((a, b) => new Date(b.date) - new Date(a.date));
         let currentMonthKey = '';
         let currentBody = null;
-
         records.forEach(record => {
             const monthKey = record.date.substring(0, 7);
             if (monthKey !== currentMonthKey) {
@@ -546,8 +543,8 @@
                 group.appendChild(currentBody);
                 container.appendChild(group);
             }
-
             const dateObj = new Date(record.date);
+            const displayPrice = record.price === 0 ? '<span style="color:var(--accent)">請</span>' : `$${record.price}`;
             const item = document.createElement('div');
             item.className = 'record-item';
             item.innerHTML = `
@@ -559,7 +556,7 @@
                     <div class="ri-row-top">
                         <span class="ri-shop-tag">${record.shop}</span>
                         <span class="ri-drink">${record.drink}</span>
-                        <span class="ri-price">$${record.price}</span>
+                        <span class="ri-price">${displayPrice}</span>
                     </div>
                     <div class="ri-row-bottom">
                         <span class="ri-specs">${record.ice} · ${record.sugar}</span>
@@ -583,11 +580,20 @@
         });
     }
 
+    function renderDrinkDatalist() {
+        const datalist = document.getElementById('drink-list');
+        datalist.innerHTML = '';
+        savedDrinks.forEach(drink => {
+            const opt = document.createElement('option');
+            opt.value = drink;
+            datalist.appendChild(opt);
+        });
+    }
+
     function updateMonthFilterOptions() {
         const filter = document.getElementById('month-filter');
         const currentVal = filter.value;
         const months = [...new Set(records.map(r => r.date.substring(0, 7)))].sort().reverse();
-        
         filter.innerHTML = '<option value="all">全部時間</option>';
         months.forEach(m => {
             const opt = document.createElement('option');
@@ -603,120 +609,107 @@
         document.getElementById(`tab-${tabName}`).classList.add('active');
         document.getElementById(`tab-btn-${tabName}`).classList.add('active');
         document.querySelector('.fab-btn').style.display = tabName === 'analysis' ? 'none' : 'flex';
-        
-        if(tabName === 'analysis') {
-            updateMonthFilterOptions();
-            updateCharts();
-        }
+        if(tabName === 'analysis') { updateMonthFilterOptions(); updateCharts(); }
     }
-
-    const morandiPalette = ['#7da1b8', '#BFACAA', '#8FA895', '#D69F9F', '#E6C9A8', '#9EB1BC', '#A2AD91', '#B8B8D1'];
 
     function updateCharts() {
         const selectedMonth = document.getElementById('month-filter').value;
-        const filteredRecords = selectedMonth === 'all' 
-            ? records 
-            : records.filter(r => r.date.startsWith(selectedMonth));
-
+        const filteredRecords = selectedMonth === 'all' ? records : records.filter(r => r.date.startsWith(selectedMonth));
         let totalSpend = 0;
-        const shopCounts = {}, tempCounts = { '正常冰':0, '少冰':0, '微冰':0, '去冰':0, '溫':0, '熱':0 };
-
+        const shopCounts = {};
+        const drinkCounts = {};
+        const tempCounts = { '正常冰':0, '少冰':0, '微冰':0, '去冰':0, '常溫':0, '溫':0, '熱':0 };
+        
         filteredRecords.forEach(r => {
             totalSpend += (r.price || 0);
             shopCounts[r.shop] = (shopCounts[r.shop] || 0) + 1;
+            drinkCounts[r.drink] = (drinkCounts[r.drink] || 0) + 1;
             if (tempCounts.hasOwnProperty(r.ice)) tempCounts[r.ice]++;
         });
-
+        
         document.getElementById('total-cups').innerText = filteredRecords.length;
         document.getElementById('total-spend').innerText = `$${totalSpend.toLocaleString()}`;
-        document.getElementById('shop-chart-title').innerText = selectedMonth === 'all' ? '店家消費排行' : `${selectedMonth.replace('-',' / ')} 店家排行`;
+        
+        const titlePrefix = selectedMonth === 'all' ? '' : `${selectedMonth.replace('-',' / ')} `;
+        document.getElementById('shop-chart-title').innerText = `${titlePrefix}店家消費排行 (Top 10)`;
+        document.getElementById('drink-chart-title').innerText = `${titlePrefix}品項消費排行 (Top 5)`;
 
-        const sortedShops = Object.entries(shopCounts).sort((a, b) => b[1] - a[1]);
+        // 店家排行榜 (Top 10)
+        let sortedShops = Object.entries(shopCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
         if (shopChartInstance) shopChartInstance.destroy();
         shopChartInstance = new Chart(document.getElementById('shopChart'), {
             type: 'bar',
+            data: { labels: sortedShops.map(i => i[0]), datasets: [{ label: '杯數', data: sortedShops.map(i => i[1]), backgroundColor: morandiPalette, borderRadius: 4 }] },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }, plugins: { legend: { display: false } } }
+        });
+
+        // 品項排行榜 (Top 5) - 使用與店家排行榜一致的前五名顏色
+        let sortedDrinks = Object.entries(drinkCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if (drinkChartInstance) drinkChartInstance.destroy();
+        drinkChartInstance = new Chart(document.getElementById('drinkChart'), {
+            type: 'bar',
             data: { 
-                labels: sortedShops.map(i => i[0]), 
+                labels: sortedDrinks.map(i => i[0]), 
                 datasets: [{ 
                     label: '杯數', 
-                    data: sortedShops.map(i => i[1]), 
-                    backgroundColor: morandiPalette,
+                    data: sortedDrinks.map(i => i[1]), 
+                    backgroundColor: morandiPalette.slice(0, 5), // 取調色盤前五色
                     borderRadius: 4 
                 }] 
             },
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                indexAxis: sortedShops.length > 6 ? 'y' : 'x',
-                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { ticks: { stepSize: 1 } } } 
-            }
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }, plugins: { legend: { display: false } } }
         });
 
-        const tempL = [], tempD = [];
-        for (const [k, v] of Object.entries(tempCounts)) { if (v > 0) { tempL.push(k); tempD.push(v); } }
+        // 溫度圓餅圖
+        const tempL = [], tempD = [], tempC = [];
+        for (const [k, v] of Object.entries(tempCounts)) { 
+            if (v > 0) { 
+                tempL.push(k); 
+                tempD.push(v); 
+                tempC.push(tempColorMap[k] || '#CCCCCC');
+            } 
+        }
         if (tempChartInstance) tempChartInstance.destroy();
         tempChartInstance = new Chart(document.getElementById('tempChart'), {
             type: 'doughnut',
-            data: { labels: tempL, datasets: [{ data: tempD, backgroundColor: morandiPalette }] },
+            data: { labels: tempL, datasets: [{ data: tempD, backgroundColor: tempC }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
         });
     }
 
-    // --- 同步功能函數 ---
-
-    // 匯出資料為 JSON 檔案
+    // --- 同步功能 ---
     function exportData() {
-        if (records.length === 0) {
-            alert('目前沒有紀錄可以匯出喔！');
-            return;
-        }
-        const exportObj = {
-            records: records,
-            shops: savedShops,
-            exportDate: new Date().toISOString(),
-            version: "1.0"
+        if (records.length === 0) { alert('目前沒有紀錄可以匯出喔！'); return; }
+        const exportObj = { 
+            records, 
+            shops: savedShops, 
+            drinks: savedDrinks, 
+            exportDate: new Date().toISOString(), 
+            version: "1.3" 
         };
-        
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
-        const downloadAnchorNode = document.createElement('a');
-        const fileName = `boba_backup_${new Date().toISOString().split('T')[0]}.json`;
-        
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", fileName);
-        document.body.appendChild(downloadAnchorNode);
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
+        const a = document.createElement('a');
+        a.setAttribute("href", dataStr);
+        a.setAttribute("download", `boba_backup_${new Date().toISOString().split('T')[0]}.json`);
+        document.body.appendChild(a); a.click(); a.remove();
     }
-
-    // 從 JSON 檔案匯入資料
+    
     function importData(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-
+        const file = event.target.files[0]; if (!file) return;
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
-                const importedData = JSON.parse(e.target.result);
-                
-                // 基礎結構檢查
-                if (!importedData.records || !Array.isArray(importedData.records)) {
-                    throw new Error('無效的檔案格式');
-                }
-
-                if (confirm(`讀取成功！即將匯入 ${importedData.records.length} 筆紀錄。這將會覆蓋您目前的本地資料，確定嗎？`)) {
-                    records = importedData.records;
-                    savedShops = importedData.shops || [];
-                    
+                const data = JSON.parse(e.target.result);
+                if (confirm(`讀取成功！匯入 ${data.records.length} 筆紀錄將覆蓋目前資料，確定嗎？`)) {
+                    records = data.records; 
+                    savedShops = data.shops || [];
+                    savedDrinks = data.drinks || [];
                     localStorage.setItem('bobaRecords', JSON.stringify(records));
                     localStorage.setItem('bobaShops', JSON.stringify(savedShops));
-                    
-                    alert('資料匯入完成！');
-                    location.reload(); // 重新整理頁面以更新所有狀態
+                    localStorage.setItem('bobaDrinks', JSON.stringify(savedDrinks));
+                    location.reload();
                 }
-            } catch (err) {
-                alert('匯入失敗：' + err.message);
-            }
-            // 清空 input 讓同一個檔案可以重複選取
+            } catch (err) { alert('匯入失敗'); }
             event.target.value = '';
         };
         reader.readAsText(file);
