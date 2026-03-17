@@ -293,6 +293,35 @@
         .stat-box h4 { font-size: 0.8rem; color: var(--text-light); margin-bottom: 5px; }
         .stat-box .number { font-size: 1.3rem; color: var(--primary); font-weight: bold; }
         .chart-container { position: relative; height: 280px; }
+
+        /* 同步功能樣式 */
+        .sync-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px dashed var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .sync-title { font-size: 0.9rem; color: var(--text-light); font-weight: 600; text-align: center; margin-bottom: 5px; }
+        .sync-btn-group { display: flex; gap: 10px; }
+        .sync-btn {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--primary);
+            background: white;
+            color: var(--primary);
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .sync-btn:active { background: #f0f5f8; transform: scale(0.98); }
+        .sync-btn.import { border-color: var(--accent); color: var(--accent); }
     </style>
 </head>
 <body>
@@ -332,6 +361,20 @@
         <div class="card">
             <h3>飲品溫度比例</h3>
             <div class="chart-container"><canvas id="tempChart"></canvas></div>
+        </div>
+
+        <!-- 同步功能區塊 -->
+        <div class="sync-section">
+            <div class="sync-title">資料備份與同步</div>
+            <div class="sync-btn-group">
+                <button class="sync-btn" onclick="exportData()">
+                    <i class="fa-solid fa-file-export"></i> 匯出備份
+                </button>
+                <button class="sync-btn import" onclick="document.getElementById('importFile').click()">
+                    <i class="fa-solid fa-file-import"></i> 匯入還原
+                </button>
+            </div>
+            <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
         </div>
     </div>
 </div>
@@ -540,7 +583,6 @@
         });
     }
 
-    // 產生月份篩選選單
     function updateMonthFilterOptions() {
         const filter = document.getElementById('month-filter');
         const currentVal = filter.value;
@@ -589,7 +631,6 @@
         document.getElementById('total-spend').innerText = `$${totalSpend.toLocaleString()}`;
         document.getElementById('shop-chart-title').innerText = selectedMonth === 'all' ? '店家消費排行' : `${selectedMonth.replace('-',' / ')} 店家排行`;
 
-        // 店家排行圖表
         const sortedShops = Object.entries(shopCounts).sort((a, b) => b[1] - a[1]);
         if (shopChartInstance) shopChartInstance.destroy();
         shopChartInstance = new Chart(document.getElementById('shopChart'), {
@@ -611,7 +652,6 @@
             }
         });
 
-        // 溫度統計圖表
         const tempL = [], tempD = [];
         for (const [k, v] of Object.entries(tempCounts)) { if (v > 0) { tempL.push(k); tempD.push(v); } }
         if (tempChartInstance) tempChartInstance.destroy();
@@ -620,6 +660,66 @@
             data: { labels: tempL, datasets: [{ data: tempD, backgroundColor: morandiPalette }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
         });
+    }
+
+    // --- 同步功能函數 ---
+
+    // 匯出資料為 JSON 檔案
+    function exportData() {
+        if (records.length === 0) {
+            alert('目前沒有紀錄可以匯出喔！');
+            return;
+        }
+        const exportObj = {
+            records: records,
+            shops: savedShops,
+            exportDate: new Date().toISOString(),
+            version: "1.0"
+        };
+        
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
+        const downloadAnchorNode = document.createElement('a');
+        const fileName = `boba_backup_${new Date().toISOString().split('T')[0]}.json`;
+        
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", fileName);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    }
+
+    // 從 JSON 檔案匯入資料
+    function importData(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const importedData = JSON.parse(e.target.result);
+                
+                // 基礎結構檢查
+                if (!importedData.records || !Array.isArray(importedData.records)) {
+                    throw new Error('無效的檔案格式');
+                }
+
+                if (confirm(`讀取成功！即將匯入 ${importedData.records.length} 筆紀錄。這將會覆蓋您目前的本地資料，確定嗎？`)) {
+                    records = importedData.records;
+                    savedShops = importedData.shops || [];
+                    
+                    localStorage.setItem('bobaRecords', JSON.stringify(records));
+                    localStorage.setItem('bobaShops', JSON.stringify(savedShops));
+                    
+                    alert('資料匯入完成！');
+                    location.reload(); // 重新整理頁面以更新所有狀態
+                }
+            } catch (err) {
+                alert('匯入失敗：' + err.message);
+            }
+            // 清空 input 讓同一個檔案可以重複選取
+            event.target.value = '';
+        };
+        reader.readAsText(file);
     }
 </script>
 
